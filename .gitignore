@@ -5,6 +5,6 @@ __pycache__/
 
 .vscode/
 
-SPEC.md
-PROGRESS.md
-REPORT.md
+datafiles/
+
+models/
