@@ -9,6 +9,9 @@ Audio samples are generated on the fly if not present:
   - test_asr_silence.wav -- pure silence
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import sys
 import numpy as np
@@ -57,7 +60,8 @@ def prepare_samples() -> list[tuple[str, np.ndarray, str]]:
 
     # ── Sample 1: full test_speech.wav ──────────────────────────────────────
     print("[prep] Loading test_speech.wav (Sample 1: full speech)...")
-    raw, sr = load_wav_float32("test_speech.wav")
+    wav_path = os.path.join(os.path.dirname(__file__), "test_speech.wav")
+    raw, sr = load_wav_float32(wav_path)
     audio_full = resample_to_16k(raw, sr)
     samples.append(("Sample 1 — full test_speech.wav", audio_full, "speech"))
 

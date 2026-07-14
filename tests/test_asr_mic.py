@@ -7,7 +7,9 @@ Usage:
     python test_asr_mic.py 8          # records for 8 seconds
 """
 
+import os
 import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import numpy as np
 

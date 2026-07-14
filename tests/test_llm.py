@@ -9,6 +9,9 @@ Run after starting Ollama:
     python -X utf8 test_llm.py
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import sys
 
