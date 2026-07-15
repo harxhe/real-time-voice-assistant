@@ -19,7 +19,7 @@ def mic_stream(q: queue.Queue):
 def run_pipeline():
     history = []
     print("=" * 60)
-    print("Real-Time Voice Assistant (Day 1 Sequential)")
+    print("Real-Time Voice Assistant")
     print("=" * 60)
     
     print("[main] Warming up models...")

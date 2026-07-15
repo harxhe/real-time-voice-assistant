@@ -1,10 +1,10 @@
 """
-Tests generate_stream() per Spec Section 9:
+Tests generate_stream():
   - Sends a hardcoded prompt to the local Ollama model (phi3:mini)
   - Confirms tokens arrive as multiple chunks, not one blocking return
-  - Logs time-to-first-token and total latency
+  - Logs time-to-first-token and total stream latency
 
-Run after starting Ollama:
+Requires Ollama to be running:
     ollama serve          (in a separate terminal, if not already running)
     python -X utf8 test_llm.py
 """

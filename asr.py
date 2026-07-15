@@ -2,8 +2,8 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 # Load once at import time — model stays resident so repeated calls are fast.
-# base.en + int8 keeps memory low and runs comfortably on CPU.
-_model = WhisperModel("base.en", device="cpu", compute_type="int8")
+# float16 on CUDA gives full GPU throughput; base.en fits comfortably in VRAM.
+_model = WhisperModel("base.en", device="cuda", compute_type="float16")
 
 
 def transcribe(audio: np.ndarray, sample_rate: int = 16000) -> str:
