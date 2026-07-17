@@ -10,6 +10,7 @@ import os
 import struct
 import threading
 import time
+import random
 from typing import Iterator
 
 import numpy as np
@@ -20,7 +21,7 @@ import tts
 
 # Paths
 
-_FILLERS_DIR = os.path.join(os.path.dirname(__file__), "fillers")
+_FILLER_DIR = os.path.join(os.path.dirname(__file__), "fillers")
 _SAMPLE_RATE = 22050
 
 # States (internal — not exposed to callers)
@@ -35,7 +36,7 @@ _STATE_RECOVERY     = "RECOVERY"
 
 # Filler rotation helpers
 
-_last_filler_index: dict[str, int] = {}
+_last_filler: dict[str, str] = {}
 
 
 def _pick_filler(category: str) -> str | None:
@@ -44,17 +45,23 @@ def _pick_filler(category: str) -> str | None:
     through available clips so the same one is never played twice in a row.
     Returns None if no clips exist for that category.
     """
-    clips = sorted(
-        f for f in os.listdir(_FILLERS_DIR)
-        if f.startswith(f"{category}_") and f.endswith(".wav")
-    )
-    if not clips:
+    if not os.path.isdir(_FILLER_DIR):
         return None
 
-    last = _last_filler_index.get(category, -1)
-    next_idx = (last + 1) % len(clips)
-    _last_filler_index[category] = next_idx
-    return os.path.join(_FILLERS_DIR, clips[next_idx])
+    available = []
+    for f in os.listdir(_FILLER_DIR):
+        if f.startswith(f"{category}_") and f.endswith(".wav"):
+            available.append(f)
+            
+    if not available:
+        return None
+
+    if len(available) > 1 and category in _last_filler:
+        available.remove(_last_filler[category])
+
+    filename = random.choice(available)
+    _last_filler[category] = filename
+    return os.path.join(_FILLER_DIR, filename)
 
 
 # WAV loading
@@ -85,19 +92,21 @@ _CHUNK_FRAMES = 2048  # ~93ms per chunk at 22050 Hz — small enough to check st
 
 def _play_filler(path: str, stop_event: threading.Event, label: str) -> None:
     """
-    Play a WAV filler clip in small chunks.  Stops immediately when stop_event
-    is set — the current ~93ms chunk finishes and then playback halts.
+    Play a WAV filler clip. Stops immediately when stop_event is set.
     """
     audio, sr = _load_wav(path)
-    offset = 0
-    while offset < len(audio):
+    
+    sd.play(audio, samplerate=sr)
+    
+    duration = len(audio) / sr
+    steps = int(duration / 0.05)
+    for _ in range(steps):
         if stop_event.is_set():
             sd.stop()
-            break
-        chunk = audio[offset: offset + _CHUNK_FRAMES]
-        sd.play(chunk, samplerate=sr)
-        sd.wait()
-        offset += _CHUNK_FRAMES
+            return
+        time.sleep(0.05)
+        
+    sd.wait()
 
 
 # LLM worker
@@ -299,21 +308,28 @@ def run_turn(
 
     audio_stream = tts.synthesize_stream(token_gen())
     for audio_chunk in audio_stream:
-        if state[0] == _STATE_INTERRUPTED:
-            break
+        if barge_in_event and barge_in_event.is_set():
+            print("  [turn_manager] INTERRUPTED: barge-in during response")
+            return collected_tokens
             
-        offset = 0
-        while offset < len(audio_chunk):
+        sd.play(audio_chunk, samplerate=22050)
+        
+        # Poll for interruption during playback
+        duration = len(audio_chunk) / 22050
+        steps = int(duration / 0.05)
+        interrupted = False
+        for _ in range(steps):
             if barge_in_event and barge_in_event.is_set():
                 sd.stop()
-                state[0] = _STATE_INTERRUPTED
-                print(f"  [turn_manager] {_STATE_INTERRUPTED}: barge-in during response")
+                print("  [turn_manager] INTERRUPTED: barge-in during response")
+                interrupted = True
                 break
-                
-            chunk = audio_chunk[offset: offset + _CHUNK_FRAMES]
-            sd.play(chunk, samplerate=22050)
-            sd.wait()
-            offset += _CHUNK_FRAMES
+            time.sleep(0.05)
+            
+        if interrupted:
+            return collected_tokens
+            
+        sd.wait()
 
     return collected_tokens
 
