@@ -4,7 +4,7 @@ from openai import OpenAI
 
 _OLLAMA_BASE_URL = "http://localhost:11434/v1"
 _LOCAL_MODEL = "phi3:mini"
-_CLOUD_MODEL = "gpt-4o-mini"
+_CLOUD_MODEL = "llama-3.1-8b-instant"
 
 _SYSTEM_PROMPT = (
     "You are a helpful, friendly voice assistant. Keep responses conversational and concise — "
@@ -26,12 +26,24 @@ def _get_local_client() -> OpenAI:
 def _get_cloud_client() -> OpenAI:
     global _cloud_client
     if _cloud_client is None:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key:
+            env_path = os.path.join(os.path.dirname(__file__), ".env")
+            if os.path.exists(env_path):
+                with open(env_path, "r") as f:
+                    for line in f:
+                        if line.startswith("GROQ_API_KEY="):
+                            api_key = line.split("=", 1)[1].strip()
+                            break
+                            
         if not api_key:
             raise EnvironmentError(
-                "OPENAI_API_KEY is not set. Export it before using the cloud fallback path."
+                "GROQ_API_KEY is not set. Export it or add it to .env before using the cloud fallback path."
             )
-        _cloud_client = OpenAI(api_key=api_key)
+        _cloud_client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
     return _cloud_client
 
 

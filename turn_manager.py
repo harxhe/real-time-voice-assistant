@@ -260,7 +260,7 @@ def run_turn(
     if not stop_filler.is_set():
         # Trigger cloud escalation in parallel
         print("  [turn_manager] FILLER_EXTENDED: escalating to cloud LLM")
-        _escalate_to_cloud(transcript, history, token_queue, lock, first_token, llm_done, winner_box)
+        _escalate_to_cloud(transcript, history, token_queue, lock, first_token, llm_done, winner_box, stop_filler)
         play_if_not_interrupted("extended", _STATE_FILLER_EXT)
 
     # Wait up to ~5s total for tokens or give up (recovery)
@@ -333,6 +333,7 @@ def _escalate_to_cloud(
     first_token: threading.Event,
     llm_done: threading.Event,
     winner_box: list[str | None],
+    stop_filler: threading.Event,
 ) -> None:
     """
     Start a cloud LLM stream. The local thread is left to finish (or time out) harmlessly.
@@ -346,7 +347,7 @@ def _escalate_to_cloud(
 
     cloud_thread = threading.Thread(
         target=_collect_llm_stream,
-        args=(cloud_gen, token_queue, lock, first_token, llm_done, None, "cloud", winner_box),
+        args=(cloud_gen, token_queue, lock, first_token, llm_done, stop_filler, "cloud", winner_box),
         daemon=True,
     )
     cloud_thread.start()
