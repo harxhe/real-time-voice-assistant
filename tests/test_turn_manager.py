@@ -24,21 +24,22 @@ import sounddevice as sd
 _play_log: list[tuple[float, str]] = []  # (timestamp, label)
 
 
-def _noop_play(audio, samplerate=22050, **kwargs):
+_play_duration = [0.0]
+
+def _mock_play(audio, samplerate=22050, **kwargs):
+    _play_duration[0] = len(audio) / samplerate
+
+def _mock_wait():
+    # sleep for the chunk duration to simulate real playback blocking
+    if _play_duration[0] > 0:
+        time.sleep(_play_duration[0])
+
+def _mock_stop():
     pass
 
-
-def _noop_wait():
-    pass
-
-
-def _noop_stop():
-    pass
-
-
-sd.play = _noop_play
-sd.wait = _noop_wait
-sd.stop = _noop_stop
+sd.play = _mock_play
+sd.wait = _mock_wait
+sd.stop = _mock_stop
 
 import turn_manager  # noqa: E402 — import after patching sd
 
@@ -249,12 +250,8 @@ def test_barge_in():
         interrupted = " [interrupted]" if e["interrupted"] else ""
         print(f"    t={t_rel:6.0f}ms  {e['label']:<20}  {e['file']}{interrupted}")
 
-    # Barge-in fired at 500ms, ack starts at ~300ms.
-    # The ack should be interrupted (stop_event set within ~50ms of barge-in).
     interrupted_events = [e for e in events if e["interrupted"]]
     any_interrupted = len(interrupted_events) > 0
-
-    # Total wall time should be well under 1500ms (not waiting out the full 3s delay)
     halted_quickly = elapsed_total < 1500
 
     checks = [
@@ -264,6 +261,52 @@ def test_barge_in():
     ]
     _print_checks(checks)
     return all(v for _, v in checks)
+
+
+# Scenario: barge-in during RESPONDING playback
+
+def test_barge_in_response():
+    print("\n" + "=" * 60)
+    print("Scenario: Barge-in during real LLM response playback")
+    print("=" * 60)
+
+    # We use instant LLM, so RESPONDING state starts almost immediately.
+    # We will trigger barge_in 200ms after turn starts.
+    barge_in_time = 0.2
+    
+    # We need to measure exact stop latency. We will patch barge_in_event.set()
+    barge_in_event = threading.Event()
+    actual_barge_in_time = [0.0]
+    
+    def fire_barge_in():
+        time.sleep(barge_in_time)
+        actual_barge_in_time[0] = time.perf_counter()
+        barge_in_event.set()
+
+    threading.Thread(target=fire_barge_in, daemon=True).start()
+
+    t_start = time.perf_counter()
+    
+    tokens = turn_manager.run_turn(
+        transcript="Quick question.",
+        history=[],
+        barge_in_event=barge_in_event,
+        _llm_override=_instant_llm(),
+    )
+    
+    t_end = time.perf_counter()
+    
+    stop_latency = (t_end - actual_barge_in_time[0]) * 1000
+    
+    print(f"\n  Turn finished. Tokens received: {len(tokens)}")
+    print(f"  Barge-in stop latency: {stop_latency:.0f} ms")
+    
+    checks = [
+        ("stop latency < 200ms", stop_latency < 200),
+    ]
+    _print_checks(checks)
+    return all(v for _, v in checks)
+
 
 
 # Scenario: total failure → recovery filler
@@ -318,6 +361,7 @@ def main():
         "Scenario: filler sequence (4s delay)": test_filler_sequence(),
         "Scenario: no fillers when LLM is fast": test_fast_llm_skips_fillers(),
         "Scenario: barge-in interrupts filler":  test_barge_in(),
+        "Scenario: barge-in interrupts response": test_barge_in_response(),
         "Scenario: recovery on total failure":   test_recovery_on_total_failure(),
     }
 

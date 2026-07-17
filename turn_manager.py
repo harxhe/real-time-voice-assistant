@@ -299,13 +299,21 @@ def run_turn(
 
     audio_stream = tts.synthesize_stream(token_gen())
     for audio_chunk in audio_stream:
-        if barge_in_event and barge_in_event.is_set():
-            sd.stop()
-            state[0] = _STATE_INTERRUPTED
-            print(f"  [turn_manager] {_STATE_INTERRUPTED}: barge-in during response")
+        if state[0] == _STATE_INTERRUPTED:
             break
-        sd.play(audio_chunk, samplerate=22050)
-        sd.wait()
+            
+        offset = 0
+        while offset < len(audio_chunk):
+            if barge_in_event and barge_in_event.is_set():
+                sd.stop()
+                state[0] = _STATE_INTERRUPTED
+                print(f"  [turn_manager] {_STATE_INTERRUPTED}: barge-in during response")
+                break
+                
+            chunk = audio_chunk[offset: offset + _CHUNK_FRAMES]
+            sd.play(chunk, samplerate=22050)
+            sd.wait()
+            offset += _CHUNK_FRAMES
 
     return collected_tokens
 
